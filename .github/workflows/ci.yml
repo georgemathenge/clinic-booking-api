@@ -1,0 +1,66 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: clinic
+          POSTGRES_PASSWORD: clinic
+          POSTGRES_DB: clinic_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clinic"
+          --health-interval 2s
+          --health-retries 15
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://clinic:clinic@localhost:5432/clinic_test
+      DATABASE_URL: postgresql+psycopg://clinic:clinic@localhost:5432/clinic_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Migrations apply cleanly (up, down, up)
+        run: alembic upgrade head && alembic downgrade base && alembic upgrade head
+      - name: Reset DB for tests
+        run: alembic downgrade base
+      - run: pytest -v
+
+  deploy:
+    # Only after tests pass on a push to main - i.e. when a PR is merged.
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          test -n "$HOOK" || { echo "RENDER_DEPLOY_HOOK_URL secret is not set"; exit 1; }
+          curl -fsS -X POST "$HOOK"
+      - name: Wait for the new version to be healthy
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        if: env.APP_URL != ''
+        run: |
+          for i in $(seq 1 40); do
+            curl -fsS "$APP_URL/health" && exit 0
+            sleep 15
+          done
+          echo "Service did not become healthy" && exit 1
