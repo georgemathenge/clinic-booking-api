@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from sqlalchemy import text
 
@@ -20,7 +22,9 @@ app.include_router(appointments.router)
 def health():
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
-    return {"status": "ok"}
+    # Render injects the deployed commit; CI polls this to confirm the new
+    # version is live rather than the old one still answering.
+    return {"status": "ok", "commit": os.environ.get("RENDER_GIT_COMMIT")}
 
 
 @app.get("/", include_in_schema=False)

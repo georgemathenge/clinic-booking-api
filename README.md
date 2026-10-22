@@ -2,8 +2,9 @@
 
 A REST API for a small clinic: patients see a doctor's free 30-minute slots for a day, book one, cancel it, or move it. It's built with **FastAPI + PostgreSQL**, deployed on **Render**, and tested and deployed by **GitHub Actions**.
 
-- **Live API:** `https://<your-service>.onrender.com` &nbsp;·&nbsp; **Interactive docs:** `/docs`
-- **Health check:** `/health`
+- **Live API:** https://clinic-booking-api-s0f4.onrender.com
+- **Interactive docs:** https://clinic-booking-api-s0f4.onrender.com/docs
+- **Health check:** https://clinic-booking-api-s0f4.onrender.com/health (also reports the deployed git commit)
 - AI usage reflection: [REFLECTION.md](REFLECTION.md)
 
 > The free Render tier sleeps after ~15 min idle, so the first request can take ~30–60 s to wake the service.
@@ -236,11 +237,11 @@ What's covered: slot generation (grid, partial blocks, breaks, weekdays), availa
 | Trigger | Jobs |
 |---|---|
 | Any **pull request** | `test`: starts a Postgres 17 service, installs deps, checks migrations apply **up → down → up**, runs `pytest` |
-| **Push to `main`** (i.e. a merged PR) | `test`, then `deploy`: calls Render's deploy hook, then polls `/health` until the new version answers |
+| **Push to `main`** (i.e. a merged PR) | `test`, then `deploy`: calls Render's deploy hook, then polls `/health` until it reports the **merged commit's SHA**. Just getting a 200 isn't enough, because the old version keeps answering until Render swaps it out. |
 
 - **`main` is the deploy branch.** Merging a PR into `main` produces a push to `main`, which runs the tests again on the merged code and deploys only if they pass.
 - Render's own auto-deploy is **turned off** (`autoDeploy: false`). That way a deploy can only come from a green pipeline, never directly from a push.
-- Branch protection on `main` requires the `test` check to pass before merging.
+- Branch protection on `main`: changes must come through a PR, the `test` check must pass on an up-to-date branch, and this applies to admins too. There are no direct pushes.
 - Secrets: `RENDER_DEPLOY_HOOK_URL` is a repo secret. `APP_URL` is a repo variable used for the post-deploy health check.
 
 **Setting it up from scratch:**
